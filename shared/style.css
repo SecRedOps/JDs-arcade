@@ -1,0 +1,51 @@
+/* ── arcade shared/style.css ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: radial-gradient(120% 90% at 50% 0%, #131a2b 0%, #090c14 60%, #06080d 100%);
+  background-attachment: fixed;
+  color: #cfd6e4;
+  font-family: 'Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: max(20px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom));
+}
+.wrap { width: 100%; max-width: 440px; }
+.btn {
+  padding: 9px 16px; border-radius: 999px; font-weight: 600; font-size: 14px;
+  background: #11324a; color: #7fe9f5; border: 1px solid #1d4a66; cursor: pointer;
+  line-height: 1;
+}
+.btn.primary { background: #2fe7f7; color: #06222a; border-color: #2fe7f7; }
+.btn:disabled { opacity: .35; cursor: default; }
+.back-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 600; color: #6b7488;
+  text-decoration: none; margin-bottom: 14px;
+  padding: 4px 10px 4px 7px; border-radius: 999px;
+  border: 1px solid #262e44;
+  transition: color .15s, border-color .15s;
+}
+.back-link:hover { color: #2fe7f7; border-color: #2fe7f7; }
+.overlay {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(4,6,10,.78); backdrop-filter: blur(4px); padding: 24px;
+  z-index: 10;
+}
+.overlay.show { display: flex; }
+.card {
+  width: 100%; max-width: 340px; border-radius: 24px; padding: 24px; text-align: center;
+  background: linear-gradient(180deg,#141a29,#0c0f18);
+  border: 1px solid rgba(47,231,247,.33);
+  box-shadow: 0 0 40px rgba(47,231,247,.18);
+}
+.card .big { font-size: 36px; }
+.card h2 { color: #fff; margin: 8px 0 4px; font-size: 20px; }
+.card p { color: #8a93a8; font-size: 14px; margin: 0 0 20px; }
+.card .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

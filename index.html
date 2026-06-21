@@ -3,350 +3,55 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Tube Sort</title>
+<title>Arcade</title>
 <meta name="theme-color" content="#06080d">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="shared/style.css">
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; min-height: 100%; }
-  body {
-    background: radial-gradient(120% 90% at 50% 0%, #131a2b 0%, #090c14 60%, #06080d 100%);
-    background-attachment: fixed;
-    color: #cfd6e4;
-    font-family: 'Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif;
-    display: flex; justify-content: center;
-    padding: max(20px, env(safe-area-inset-top)) 12px 24px;
+  h1 {
+    font-size: 24px; font-weight: 700; letter-spacing: .04em;
+    color: #2fe7f7; margin: 0 0 4px;
   }
-  .wrap { width: 100%; max-width: 440px; }
-  header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 4px; }
-  h1 { font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #2fe7f7; margin: 0; }
-  .moves { font-size: 14px; color: #8a93a8; }
-  .moves b { color: #fff; }
-  .pills { display: flex; gap: 8px; margin: 10px 0 16px; }
-  .pill {
-    padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
-    background: transparent; color: #6b7488; border: 1px solid #262e44; cursor: pointer;
+  .tagline { font-size: 13px; color: #5a6275; margin: 0 0 28px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
   }
-  .pill.on { background: #2fe7f7; color: #06222a; border-color: #2fe7f7; }
-  .board {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-    padding: 12px; border-radius: 16px;
-    background: rgba(255,255,255,.02); border: 1px solid #1b2233;
+  .game-card {
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg, #161b28, #0d1019);
+    border: 1px solid #1b2233; border-radius: 20px;
+    padding: 18px 14px; text-decoration: none;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
   }
-  .tube {
-    display: flex; flex-direction: column; gap: 6px; padding: 6px;
-    border-radius: 16px; cursor: pointer;
-    background: linear-gradient(180deg,#161b28,#0d1019);
-    border: 1px solid #262e44;
-    transition: transform .15s ease, box-shadow .15s ease;
+  .game-card:hover, .game-card:focus-visible {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.4), 0 0 0 1px #2fe7f7;
+    border-color: #2fe7f7;
+    outline: none;
   }
-  .tube:focus-visible { outline: 2px solid #2fe7f7; outline-offset: 2px; }
-  .tube.sel { transform: translateY(-10px); box-shadow: 0 0 0 2px #2fe7f7, 0 10px 24px rgba(0,0,0,.5); }
-  .tube.hint-from { box-shadow: 0 0 0 2px #f8ec22; }
-  .tube.hint-to { box-shadow: 0 0 0 2px #35e63c; }
-  .tube.done { box-shadow: 0 0 14px rgba(47,231,247,.25); }
-  .seg { height: 36px; border-radius: 10px; border: 1px solid rgba(0,0,0,.5); }
-  .slot {
-    height: 36px; border-radius: 10px;
-    border: 1.5px dashed rgba(120,140,180,.22);
-    background: rgba(255,255,255,.015);
-  }
-  .controls { display: flex; justify-content: space-between; gap: 8px; margin-top: 16px; }
-  .btn {
-    padding: 9px 16px; border-radius: 999px; font-weight: 600; font-size: 14px;
-    background: #11324a; color: #7fe9f5; border: 1px solid #1d4a66; cursor: pointer;
-  }
-  .btn.primary { background: #2fe7f7; color: #06222a; border-color: #2fe7f7; }
-  .btn:disabled { opacity: .35; cursor: default; }
-  .help { text-align: center; font-size: 12px; color: #5a6275; margin-top: 16px; line-height: 1.5; }
-  .hintmsg { text-align: center; font-size: 12px; color: #f8ec22; margin-top: 8px; min-height: 16px; }
-  .overlay {
-    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background: rgba(4,6,10,.78); backdrop-filter: blur(4px); padding: 24px;
-  }
-  .overlay.show { display: flex; }
-  .card {
-    width: 100%; max-width: 340px; border-radius: 24px; padding: 24px; text-align: center;
-    background: linear-gradient(180deg,#141a29,#0c0f18);
-    border: 1px solid rgba(47,231,247,.33);
-    box-shadow: 0 0 40px rgba(47,231,247,.18);
-  }
-  .card .big { font-size: 36px; }
-  .card h2 { color: #fff; margin: 8px 0 4px; font-size: 20px; }
-  .card p { color: #8a93a8; font-size: 14px; margin: 0 0 20px; }
-  .card .row { display: flex; gap: 12px; justify-content: center; }
-  @media (prefers-reduced-motion: reduce) {
-    .tube { transition: none; }
-  }
+  .game-card .icon { font-size: 34px; margin-bottom: 10px; line-height: 1; }
+  .game-card .name { font-size: 15px; font-weight: 700; color: #fff; margin: 0 0 4px; }
+  .game-card .desc { font-size: 12px; color: #5a6275; margin: 0; line-height: 1.45; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Tube Sort</h1>
-    <div class="moves">Moves: <b id="moves">0</b></div>
-  </header>
-  <div class="pills" id="pills"></div>
-  <div class="board" id="board"></div>
-  <div class="hintmsg" id="hintmsg"></div>
-  <div class="controls">
-    <button class="btn" id="restart">Restart</button>
-    <button class="btn" id="hint">💡 Hint</button>
-    <button class="btn" id="undo" disabled>Undo</button>
-    <button class="btn primary" id="new">New</button>
-  </div>
-  <p class="help">Tap a tube to pick it up, tap another to pour.<br>
-  Matching colors move together. Fill every tube with one color.</p>
-</div>
-
-<div class="overlay" id="overlay">
-  <div class="card">
-    <div class="big">🎉</div>
-    <h2>Solved</h2>
-    <p id="winstats"></p>
-    <div class="row">
-      <button class="btn" id="replay">Replay this one</button>
-      <button class="btn primary" id="newwin">New puzzle</button>
-    </div>
+  <h1>Arcade</h1>
+  <p class="tagline">Offline puzzle games — pick your challenge</p>
+  <div class="grid">
+    <a class="game-card" href="games/tube-sort/">
+      <div class="icon">🧪</div>
+      <div class="name">Tube Sort</div>
+      <p class="desc">Pour matching colours to fill every tube.</p>
+    </a>
   </div>
 </div>
-
 <script>
 "use strict";
-const CAP = 4;
-const PALETTE = {
-  cyan:"#23e5f5", red:"#f53b3b", blue:"#3346ff", green:"#35e63c",
-  yellow:"#f8ec22", orange:"#ffa722", magenta:"#ff35ff", purple:"#a824c9",
-  peri:"#8f8ff7", silver:"#d8d8de", pink:"#ff85a8", tan:"#c98a4b"
-};
-const COLOR_IDS = Object.keys(PALETTE);
-const DIFFS = { Easy: 6, Classic: 10, Hard: 12 };
-
-// ---------- rules ----------
-const topRun = t => {
-  if (!t.length) return null;
-  const color = t[t.length - 1];
-  let count = 1;
-  for (let i = t.length - 2; i >= 0 && t[i] === color; i--) count++;
-  return { color, count };
-};
-const isComplete = t => t.length === CAP && t.every(c => c === t[0]);
-const isWin = ts => ts.every(t => !t.length || isComplete(t));
-const canPour = (src, dst) => {
-  if (!src.length || dst.length >= CAP || isComplete(src)) return false;
-  return !dst.length || dst[dst.length - 1] === src[src.length - 1];
-};
-const applyPour = (ts, from, to) => {
-  const next = ts.map(t => t.slice());
-  const run = topRun(next[from]);
-  const amount = Math.min(run.count, CAP - next[to].length);
-  for (let k = 0; k < amount; k++) next[to].push(next[from].pop());
-  return next;
-};
-
-// ---------- solver ----------
-const keyOf = ts => ts.map(t => t.join(".")).slice().sort().join("|");
-function solve(tubes, budget = 90000) {
-  const seen = new Set();
-  let nodes = 0, over = false;
-  function dfs(ts) {
-    if (over) return null;
-    if (++nodes > budget) { over = true; return null; }
-    if (isWin(ts)) return [];
-    const k = keyOf(ts);
-    if (seen.has(k)) return null;
-    seen.add(k);
-    const moves = [];
-    for (let i = 0; i < ts.length; i++) {
-      const src = ts[i];
-      if (!src.length || isComplete(src)) continue;
-      const run = topRun(src);
-      const srcUniform = run.count === src.length;
-      let emptyUsed = false;
-      for (let j = 0; j < ts.length; j++) {
-        if (i === j) continue;
-        const dst = ts[j];
-        if (dst.length >= CAP) continue;
-        if (!dst.length) {
-          if (srcUniform || emptyUsed) continue;
-          emptyUsed = true;
-          moves.push({ i, j, score: 1 });
-        } else if (dst[dst.length - 1] === run.color) {
-          const after = dst.length + Math.min(run.count, CAP - dst.length);
-          const completes = after === CAP && dst.every(c => c === run.color);
-          moves.push({ i, j, score: completes ? 3 : 2 });
-        }
-      }
-    }
-    moves.sort((a, b) => b.score - a.score);
-    for (const m of moves) {
-      const res = dfs(applyPour(ts, m.i, m.j));
-      if (res) return [{ from: m.i, to: m.j }, ...res];
-    }
-    return null;
-  }
-  const path = dfs(tubes);
-  return over ? undefined : path;
-}
-
-// ---------- generation ----------
-const shuffle = a => {
-  a = a.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-};
-function generatePuzzle(numColors) {
-  const colors = COLOR_IDS.slice(0, numColors);
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const pool = shuffle(colors.flatMap(c => Array(CAP).fill(c)));
-    const tubes = [];
-    for (let i = 0; i < numColors; i++) tubes.push(pool.slice(i * CAP, (i + 1) * CAP));
-    tubes.push([], []);
-    if (tubes.some(isComplete)) continue;
-    const sol = solve(tubes);
-    if (sol) return tubes;
-    if (sol === undefined && attempt > 10) return tubes;
-  }
-  return null;
-}
-
-// ---------- state + render ----------
-const S = {
-  difficulty: "Classic", tubes: [], initial: [], history: [],
-  selected: null, moves: 0, won: false, hint: null
-};
-let hintTimer = null;
-
-const $ = id => document.getElementById(id);
-const board = $("board");
-
-function buildBoard() {
-  board.innerHTML = "";
-  S.tubes.forEach((_, i) => {
-    const b = document.createElement("button");
-    b.className = "tube";
-    b.dataset.i = i;
-    b.addEventListener("click", () => tap(i));
-    board.appendChild(b);
-  });
-}
-
-function segHTML(colorId) {
-  const hex = PALETTE[colorId];
-  return `<div class="seg" style="background:linear-gradient(180deg, ${hex}f2 0%, ${hex} 45%, ${hex}b8 100%);box-shadow:0 0 12px ${hex}59, inset 0 2px 3px rgba(255,255,255,.38), inset 0 -3px 4px rgba(0,0,0,.35)"></div>`;
-}
-
-function render() {
-  $("moves").textContent = S.moves;
-  $("undo").disabled = !S.history.length;
-  S.tubes.forEach((t, i) => {
-    const el = board.children[i];
-    // open end at the bottom: oldest on top, exposed run lowest, empties beneath
-    let html = "";
-    for (const c of t) html += segHTML(c);
-    for (let k = 0; k < CAP - t.length; k++) html += '<div class="slot"></div>';
-    el.innerHTML = html;
-    el.className = "tube"
-      + (S.selected === i ? " sel" : "")
-      + (S.hint && S.hint.from === i ? " hint-from" : "")
-      + (S.hint && S.hint.to === i ? " hint-to" : "")
-      + (isComplete(t) ? " done" : "");
-  });
-  $("overlay").className = "overlay" + (S.won ? " show" : "");
-  if (S.won) $("winstats").textContent = `${S.moves} moves on ${S.difficulty}`;
-}
-
-function setHintMsg(msg) { $("hintmsg").textContent = msg || ""; }
-
-function newGame(diff) {
-  if (diff) S.difficulty = diff;
-  S.tubes = generatePuzzle(DIFFS[S.difficulty]);
-  S.initial = S.tubes.map(t => t.slice());
-  S.history = []; S.selected = null; S.moves = 0; S.won = false; S.hint = null;
-  setHintMsg("");
-  buildBoard();
-  renderPills();
-  render();
-}
-
-function restart() {
-  S.tubes = S.initial.map(t => t.slice());
-  S.history = []; S.selected = null; S.moves = 0; S.won = false; S.hint = null;
-  setHintMsg("");
-  render();
-}
-
-function undo() {
-  if (!S.history.length) return;
-  S.tubes = S.history.pop();
-  S.moves++; // undo costs a move — fewer moves is better
-  S.selected = null; S.won = false; S.hint = null;
-  render();
-}
-
-function showHint() {
-  setHintMsg("");
-  const path = solve(S.tubes);
-  if (path && path.length) {
-    S.hint = path[0];
-    render();
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => { S.hint = null; render(); }, 1800);
-  } else if (path === undefined) {
-    setHintMsg("Position too tangled to analyse — try undoing a move.");
-  } else {
-    setHintMsg("No way out from here. Undo or restart.");
-  }
-}
-
-function tap(i) {
-  if (S.won) return;
-  S.hint = null; setHintMsg("");
-  if (S.selected === null) {
-    if (S.tubes[i].length && !isComplete(S.tubes[i])) S.selected = i;
-  } else if (S.selected === i) {
-    S.selected = null;
-  } else if (canPour(S.tubes[S.selected], S.tubes[i])) {
-    S.history.push(S.tubes.map(t => t.slice()));
-    S.tubes = applyPour(S.tubes, S.selected, i);
-    S.moves++;
-    S.selected = null;
-    if (isWin(S.tubes)) S.won = true;
-  } else if (S.tubes[i].length && !isComplete(S.tubes[i])) {
-    S.selected = i; // switch selection instead of punishing a mis-tap
-  } else {
-    S.selected = null;
-  }
-  render();
-}
-
-function renderPills() {
-  const p = $("pills");
-  p.innerHTML = "";
-  Object.keys(DIFFS).forEach(d => {
-    const b = document.createElement("button");
-    b.className = "pill" + (d === S.difficulty ? " on" : "");
-    b.textContent = d;
-    b.addEventListener("click", () => newGame(d));
-    p.appendChild(b);
-  });
-}
-
-$("restart").addEventListener("click", restart);
-$("undo").addEventListener("click", undo);
-$("hint").addEventListener("click", showHint);
-$("new").addEventListener("click", () => newGame());
-$("replay").addEventListener("click", restart);
-$("newwin").addEventListener("click", () => newGame());
-
-newGame();
-
-// ---------- PWA ----------
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
 }

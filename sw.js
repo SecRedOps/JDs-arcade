@@ -1,8 +1,26 @@
-const CACHE = "tube-sort-v1";
-const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+// ╔══════════════════════════════════════════╗
+// ║  CACHE VERSION — bump this on any change ║
+// ║  Current: arcade-v1                      ║
+// ╚══════════════════════════════════════════╝
+const CACHE = "arcade-v1";
+
+const ASSETS = [
+  "./",
+  "./index.html",
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./shared/style.css",
+  "./games/tube-sort/",
+  "./games/tube-sort/index.html",
+];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(ASSETS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", e => {
