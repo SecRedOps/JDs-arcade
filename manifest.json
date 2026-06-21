@@ -1,7 +1,7 @@
 {
-  "name": "Tube Sort",
-  "short_name": "Tube Sort",
-  "description": "Unlimited colour tube-sorting puzzles",
+  "name": "Arcade",
+  "short_name": "Arcade",
+  "description": "Offline puzzle games — Tube Sort and more",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
