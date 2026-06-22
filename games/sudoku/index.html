@@ -76,6 +76,19 @@
   <div class="sudoku-grid" id="sudoku-grid"></div>
   <div class="numpad" id="numpad"></div>
   <div class="hintmsg" id="hintmsg"></div>
+
+  <details class="how-to-play">
+    <summary><span class="arrow">▶</span> How to play</summary>
+    <div class="htp-body">
+      <p><strong>Goal:</strong> fill every empty cell in the 9×9 grid with a digit from 1 to 9, following three rules:</p>
+      <div class="step"><div class="step-num">1</div><div><strong>Every row</strong> (horizontal line of 9 cells) must contain each of the digits 1–9 exactly once.</div></div>
+      <div class="step"><div class="step-num">2</div><div><strong>Every column</strong> (vertical line of 9 cells) must contain each of the digits 1–9 exactly once.</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>Every 3×3 box</strong> (the nine bold-bordered squares) must also contain each digit 1–9 exactly once.</div></div>
+      <p><strong>How to enter a number:</strong> tap a white cell to select it (it highlights), then tap a digit on the number pad below. Tap ⌫ to erase. You can also use the keyboard — arrow keys to move, 1–9 to fill, Delete to erase.</p>
+      <p><strong>Given cells</strong> (shown in cyan) are part of the puzzle — they can't be changed. <strong>Red cells</strong> mean your digit conflicts with another in the same row, column or box.</p>
+      <p><strong>Hint</strong> reveals one cell that logic alone can determine. New to Sudoku? Start on <strong>Easy</strong> — the puzzle has more given cells and is straightforward to solve without guessing.</p>
+    </div>
+  </details>
 </div>
 
 <div class="overlay" id="overlay">
