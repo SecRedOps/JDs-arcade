@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Lights Out</title>
+<meta name="theme-color" content="#06080d">
+<link rel="manifest" href="../../manifest.json">
+<link rel="icon" href="../../icon-192.png">
+<link rel="apple-touch-icon" href="../../icon-192.png">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #2fe7f7; margin: 0; }
+  .moves { font-size: 14px; color: #8a93a8; }
+  .moves b { color: #fff; }
+  .controls { display: flex; gap: 8px; margin: 12px 0; }
+  .grid-wrap {
+    width: 100%; max-width: 340px; margin: 0 auto;
+    aspect-ratio: 1;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    padding: 12px;
+    background: rgba(255,255,255,.02); border: 1px solid #1b2233; border-radius: 16px;
+  }
+  .cell {
+    aspect-ratio: 1; border-radius: 12px; cursor: pointer; border: none;
+    transition: background .12s ease, box-shadow .12s ease;
+    background: #0d1019; border: 1px solid #1b2233;
+  }
+  .cell.on {
+    background: #2fe7f7;
+    box-shadow: 0 0 16px rgba(47,231,247,.7), 0 0 6px rgba(47,231,247,.9);
+  }
+  .cell.hint { box-shadow: 0 0 0 2px #f8ec22, 0 0 12px rgba(248,236,34,.5); }
+  .hintmsg { text-align: center; font-size: 12px; color: #f8ec22; margin-top: 8px; min-height: 16px; }
+  .help { text-align: center; font-size: 12px; color: #5a6275; margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="../../">← Back</a>
+  <header>
+    <h1>Lights Out</h1>
+    <div class="moves">Moves: <b id="moves">0</b></div>
+  </header>
+  <div class="controls">
+    <button class="btn" id="restart">Restart</button>
+    <button class="btn" id="hint">💡 Hint</button>
+    <button class="btn primary" id="newgame">New</button>
+  </div>
+  <div class="grid-wrap" id="grid"></div>
+  <div class="hintmsg" id="hintmsg"></div>
+  <p class="help">Tap a light to toggle it and its neighbours.<br>Turn all lights off to win!</p>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <div class="big">🌑</div>
+    <h2>Lights Out!</h2>
+    <p id="winstats"></p>
+    <div class="row">
+      <button class="btn" id="replay">Replay</button>
+      <button class="btn primary" id="newwin">New puzzle</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const N = 5, CELLS = N * N;
+
+// ── Influence matrix ──────────────────────────────────────────────────────────
+// A[i][j] = 1 if pressing cell j toggles cell i
+const A = [];
+for (let i = 0; i < CELLS; i++) {
+  const row = Array(CELLS).fill(0);
+  const r = (i / N) | 0, c = i % N;
+  row[i] = 1;
+  if (r > 0)     row[(r - 1) * N + c] = 1;
+  if (r < N - 1) row[(r + 1) * N + c] = 1;
+  if (c > 0)     row[r * N + c - 1]   = 1;
+  if (c < N - 1) row[r * N + c + 1]   = 1;
+  A.push(row);
+}
+
+// ── GF(2) Gaussian elimination — returns solution x or null (unsolvable) ──────
+function solveGF2(state) {
+  // Solve Ax = state (mod 2)
+  const aug = A.map((row, i) => row.concat(state[i]));
+  const pivotRow = Array(CELLS).fill(-1);
+  let col = 0;
+  for (let row = 0; row < CELLS && col < CELLS; ) {
+    let pr = -1;
+    for (let r = row; r < CELLS; r++) { if (aug[r][col]) { pr = r; break; } }
+    if (pr === -1) { col++; continue; }
+    [aug[row], aug[pr]] = [aug[pr], aug[row]];
+    pivotRow[col] = row;
+    for (let r = 0; r < CELLS; r++) {
+      if (r !== row && aug[r][col]) {
+        for (let k = col; k <= CELLS; k++) aug[r][k] ^= aug[row][k];
+      }
+    }
+    row++; col++;
+  }
+  for (let r = 0; r < CELLS; r++) {
+    if (!aug[r].slice(0, CELLS).some(Boolean) && aug[r][CELLS]) return null;
+  }
+  const x = Array(CELLS).fill(0);
+  for (let c2 = 0; c2 < CELLS; c2++) {
+    const pr2 = pivotRow[c2];
+    if (pr2 !== -1 && aug[pr2][CELLS]) x[c2] = 1;
+  }
+  return x;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function tryStore(key, val) { try { localStorage.setItem(key, String(val)); } catch (_) {} }
+function tryLoad(key) { try { return localStorage.getItem(key); } catch (_) { return null; } }
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  state: Array(CELLS).fill(0),
+  initial: Array(CELLS).fill(0),
+  moves: 0, won: false, hint: -1,
+  best: parseInt(tryLoad("lights-out-best") || "0", 10) || Infinity
+};
+if (!isFinite(S.best)) S.best = 0;
+
+const $ = id => document.getElementById(id);
+const grid = $("grid");
+
+function press(i, record = true) {
+  const r = (i / N) | 0, c = i % N;
+  S.state[i] ^= 1;
+  if (r > 0)     S.state[(r - 1) * N + c] ^= 1;
+  if (r < N - 1) S.state[(r + 1) * N + c] ^= 1;
+  if (c > 0)     S.state[r * N + c - 1]   ^= 1;
+  if (c < N - 1) S.state[r * N + c + 1]   ^= 1;
+  if (record) { S.moves++; S.hint = -1; $("hintmsg").textContent = ""; }
+}
+
+function newGame() {
+  S.state = Array(CELLS).fill(0);
+  // Generate solvable puzzle: start from solved, apply random presses
+  const pressCount = 8 + ((Math.random() * 8) | 0);
+  const pressed = shuffle([...Array(CELLS).keys()]).slice(0, pressCount);
+  for (const i of pressed) press(i, false);
+  // Edge case: if already solved (unlikely but possible), press one more
+  if (!S.state.some(Boolean)) press(0, false);
+  S.initial = S.state.slice();
+  S.moves = 0; S.won = false; S.hint = -1;
+  $("hintmsg").textContent = "";
+  $("overlay").className = "overlay";
+  render();
+}
+
+function restart() {
+  S.state = S.initial.slice();
+  S.moves = 0; S.won = false; S.hint = -1;
+  $("hintmsg").textContent = "";
+  $("overlay").className = "overlay";
+  render();
+}
+
+function showHint() {
+  $("hintmsg").textContent = "";
+  const sol = solveGF2(S.state);
+  if (!sol) {
+    $("hintmsg").textContent = "No solution from here — restart?";
+    return;
+  }
+  const first = sol.indexOf(1);
+  if (first === -1) {
+    $("hintmsg").textContent = "Already solved!";
+    return;
+  }
+  S.hint = first;
+  render();
+  setTimeout(() => { S.hint = -1; render(); }, 1800);
+}
+
+function tap(i) {
+  if (S.won) return;
+  press(i, true);
+  if (!S.state.some(Boolean)) {
+    S.won = true;
+    const best = tryLoad("lights-out-best");
+    const prev = parseInt(best || "0", 10);
+    if (!prev || S.moves < prev) tryStore("lights-out-best", S.moves);
+    const cur = parseInt(tryLoad("lights-out-best") || "0", 10);
+    $("winstats").textContent = `${S.moves} moves · Best: ${cur}`;
+    $("overlay").className = "overlay show";
+  }
+  render();
+}
+
+function render() {
+  $("moves").textContent = S.moves;
+  for (let i = 0; i < CELLS; i++) {
+    const el = grid.children[i];
+    el.className = "cell" + (S.state[i] ? " on" : "") + (S.hint === i ? " hint" : "");
+  }
+}
+
+function buildGrid() {
+  grid.innerHTML = "";
+  for (let i = 0; i < CELLS; i++) {
+    const btn = document.createElement("button");
+    btn.className = "cell";
+    btn.addEventListener("click", () => tap(i));
+    grid.appendChild(btn);
+  }
+}
+
+$("restart").addEventListener("click", restart);
+$("newgame").addEventListener("click", newGame);
+$("hint").addEventListener("click", showHint);
+$("replay").addEventListener("click", restart);
+$("newwin").addEventListener("click", newGame);
+
+buildGrid();
+newGame();
+
+if ("serviceWorker" in navigator)
+  window.addEventListener("load", () => navigator.serviceWorker.register("../../sw.js"));
+</script>
+</body>
+</html>

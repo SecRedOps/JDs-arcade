@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sudoku</title>
+<meta name="theme-color" content="#06080d">
+<link rel="manifest" href="../../manifest.json">
+<link rel="icon" href="../../icon-192.png">
+<link rel="apple-touch-icon" href="../../icon-192.png">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 10px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #2fe7f7; margin: 0; }
+  .pills { display: flex; gap: 8px; margin-bottom: 12px; }
+  .pill {
+    padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: transparent; color: #6b7488; border: 1px solid #262e44; cursor: pointer;
+  }
+  .pill.on { background: #2fe7f7; color: #06222a; border-color: #2fe7f7; }
+
+  /* ── Sudoku grid ─────────────────────────────────────── */
+  .sudoku-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    border: 2px solid rgba(47,231,247,.6);
+    border-radius: 6px; overflow: hidden;
+    background: #1b2233;
+    gap: 1px;
+    width: 100%; max-width: 360px; margin: 0 auto;
+    user-select: none;
+  }
+  .cell {
+    aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 600;
+    cursor: pointer; border: none;
+    background: #0d1019; color: #cfd6e4;
+    position: relative;
+    /* box borders are injected via inline style per-cell */
+  }
+  .cell.given { color: #2fe7f7; cursor: default; }
+  .cell.sel   { background: #0f2a3a; }
+  .cell.peer  { background: #0a1a22; }
+  .cell.same-num { color: #f8ec22; }
+  .cell.error { color: #f53b3b; }
+  .cell.hint-cell { background: #1a3300; color: #35e63c; }
+
+  /* ── Number pad ──────────────────────────────────────── */
+  .numpad {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    margin: 12px auto 0; max-width: 360px;
+  }
+  .num-btn {
+    aspect-ratio: 1; border-radius: 10px; font-size: 18px; font-weight: 700;
+    background: #11324a; color: #7fe9f5; border: 1px solid #1d4a66; cursor: pointer;
+  }
+  .num-btn:active { background: #1a4a6a; }
+  .num-btn.erase  { font-size: 14px; background: #1a1a2e; color: #8a93a8; border-color: #262e44; }
+
+  .controls { display: flex; gap: 8px; margin: 12px 0 0; }
+  .hintmsg { text-align: center; font-size: 12px; color: #35e63c; margin-top: 8px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="../../">← Back</a>
+  <header>
+    <h1>Sudoku</h1>
+    <div class="controls" style="margin:0;gap:6px">
+      <button class="btn" id="hint">💡 Hint</button>
+      <button class="btn primary" id="newgame">New</button>
+    </div>
+  </header>
+  <div class="pills" id="pills"></div>
+  <div class="sudoku-grid" id="sudoku-grid"></div>
+  <div class="numpad" id="numpad"></div>
+  <div class="hintmsg" id="hintmsg"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <div class="big">🎉</div>
+    <h2>Solved!</h2>
+    <p id="winstats"></p>
+    <div class="row">
+      <button class="btn primary" id="newwin">New puzzle</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function tryStore(k, v) { try { localStorage.setItem(k, String(v)); } catch (_) {} }
+function tryLoad(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
+
+// ── Sudoku logic ──────────────────────────────────────────────────────────────
+// grid: Uint8Array(81), values 0-9, 0=empty. Flat row-major.
+
+function candidateMask(grid, pos) {
+  const r = (pos / 9) | 0, c = pos % 9;
+  let used = 0;
+  for (let i = 0; i < 9; i++) {
+    let v = grid[r * 9 + i]; if (v) used |= 1 << v;
+    v = grid[i * 9 + c];     if (v) used |= 1 << v;
+  }
+  const br = (r / 3 | 0) * 3, bc = (c / 3 | 0) * 3;
+  for (let dr = 0; dr < 3; dr++)
+    for (let dc = 0; dc < 3; dc++) {
+      const v = grid[(br + dr) * 9 + (bc + dc)]; if (v) used |= 1 << v;
+    }
+  return (~used) & 0x3FE; // bits 1–9
+}
+
+function popcount(n) {
+  let c = 0; while (n) { c += n & 1; n >>>= 1; } return c;
+}
+
+function maskVals(mask) {
+  const a = [];
+  for (let v = 1; v <= 9; v++) if (mask & (1 << v)) a.push(v);
+  return a;
+}
+
+// Backtracking solver with MRV; counts up to `limit` solutions
+function countSolutions(grid, limit = 2) {
+  const g = grid.slice();
+  let count = 0;
+  function dfs() {
+    if (count >= limit) return;
+    let best = -1, bestBits = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      const m = candidateMask(g, i);
+      const bits = popcount(m);
+      if (bits === 0) return;
+      if (bits < bestBits) { bestBits = bits; best = i; }
+      if (bits === 1) break;
+    }
+    if (best === -1) { count++; return; }
+    const m = candidateMask(g, best);
+    for (let v = 1; v <= 9; v++) {
+      if (!(m & (1 << v))) continue;
+      g[best] = v; dfs(); g[best] = 0;
+    }
+  }
+  dfs();
+  return count;
+}
+
+// Fill a blank grid (backtracking + shuffle for randomness)
+function fillGrid(grid) {
+  let best = -1, bestBits = 10;
+  for (let i = 0; i < 81; i++) {
+    if (grid[i]) continue;
+    const m = candidateMask(grid, i);
+    const bits = popcount(m);
+    if (bits === 0) return false;
+    if (bits < bestBits) { bestBits = bits; best = i; }
+    if (bits === 1) break;
+  }
+  if (best === -1) return true;
+  for (const v of shuffle(maskVals(candidateMask(grid, best)))) {
+    grid[best] = v;
+    if (fillGrid(grid)) return true;
+    grid[best] = 0;
+  }
+  return false;
+}
+
+// Remove cells while maintaining uniqueness
+function makePuzzle(solution, difficulty) {
+  const clueTargets = { Easy: 42, Medium: 32, Hard: 26 };
+  const target = clueTargets[difficulty] || 32;
+  const puzzle = solution.slice();
+  const positions = shuffle([...Array(81).keys()]);
+  let clues = 81;
+  for (const pos of positions) {
+    if (clues <= target) break;
+    const val = puzzle[pos];
+    puzzle[pos] = 0;
+    if (countSolutions(puzzle, 2) === 1) { clues--; } else { puzzle[pos] = val; }
+  }
+  return puzzle;
+}
+
+// Logic hint: naked single or hidden single
+function logicHint(puzzle, userGrid) {
+  // working grid: given cells + user's correct fills
+  const g = userGrid.slice();
+
+  // naked single
+  for (let i = 0; i < 81; i++) {
+    if (g[i]) continue;
+    const m = candidateMask(g, i);
+    if (popcount(m) === 1) return { pos: i, val: maskVals(m)[0] };
+  }
+  // hidden single in row
+  for (let r = 0; r < 9; r++) {
+    for (let v = 1; v <= 9; v++) {
+      const fits = [];
+      for (let c = 0; c < 9; c++) {
+        const i = r * 9 + c;
+        if (!g[i] && (candidateMask(g, i) & (1 << v))) fits.push(i);
+      }
+      if (fits.length === 1) return { pos: fits[0], val: v };
+    }
+  }
+  // hidden single in col
+  for (let c = 0; c < 9; c++) {
+    for (let v = 1; v <= 9; v++) {
+      const fits = [];
+      for (let r = 0; r < 9; r++) {
+        const i = r * 9 + c;
+        if (!g[i] && (candidateMask(g, i) & (1 << v))) fits.push(i);
+      }
+      if (fits.length === 1) return { pos: fits[0], val: v };
+    }
+  }
+  // hidden single in box
+  for (let br = 0; br < 3; br++) for (let bc = 0; bc < 3; bc++) {
+    for (let v = 1; v <= 9; v++) {
+      const fits = [];
+      for (let dr = 0; dr < 3; dr++) for (let dc = 0; dc < 3; dc++) {
+        const i = (br * 3 + dr) * 9 + (bc * 3 + dc);
+        if (!g[i] && (candidateMask(g, i) & (1 << v))) fits.push(i);
+      }
+      if (fits.length === 1) return { pos: fits[0], val: v };
+    }
+  }
+  return null;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  difficulty: "Medium",
+  puzzle:   new Uint8Array(81),
+  solution: new Uint8Array(81),
+  user:     new Uint8Array(81), // player-entered values
+  selected: -1,
+  hintCell: -1,
+  won: false,
+  startTime: 0
+};
+
+const $ = id => document.getElementById(id);
+const gridEl = $("sudoku-grid");
+
+// ── Grid DOM ──────────────────────────────────────────────────────────────────
+function buildGridDOM() {
+  gridEl.innerHTML = "";
+  for (let i = 0; i < 81; i++) {
+    const r = (i / 9) | 0, c = i % 9;
+    const el = document.createElement("button");
+    el.className = "cell";
+    // Thick borders for box boundaries (right/bottom of every 3rd)
+    let bs = "";
+    if (c === 2 || c === 5) bs += "border-right:2px solid rgba(47,231,247,.5);";
+    if (r === 2 || r === 5) bs += "border-bottom:2px solid rgba(47,231,247,.5);";
+    if (bs) el.style.cssText = bs;
+    el.addEventListener("click", () => selectCell(i));
+    gridEl.appendChild(el);
+  }
+}
+
+function selectCell(i) {
+  if (S.won) return;
+  S.hintCell = -1; $("hintmsg").textContent = "";
+  if (S.puzzle[i]) return; // given cell, not editable
+  S.selected = (S.selected === i) ? -1 : i;
+  render();
+}
+
+function inputNum(v) {
+  if (S.selected === -1 || S.won) return;
+  const i = S.selected;
+  if (S.puzzle[i]) return;
+  S.hintCell = -1; $("hintmsg").textContent = "";
+  S.user[i] = v;
+  // Check win
+  let complete = true;
+  for (let k = 0; k < 81; k++) {
+    const val = S.user[k] || S.puzzle[k];
+    if (val !== S.solution[k]) { complete = false; break; }
+  }
+  if (complete) {
+    S.won = true;
+    const elapsed = Math.round((Date.now() - S.startTime) / 1000);
+    const mins = (elapsed / 60) | 0, secs = elapsed % 60;
+    const timeStr = mins ? `${mins}m ${secs}s` : `${secs}s`;
+    const key = `sudoku-best-${S.difficulty}`;
+    const prev = parseInt(tryLoad(key) || "0", 10);
+    if (!prev || elapsed < prev) tryStore(key, elapsed);
+    const best = parseInt(tryLoad(key) || "0", 10);
+    const bm = (best / 60) | 0, bs2 = best % 60;
+    const bestStr = bm ? `${bm}m ${bs2}s` : `${bs2}s`;
+    $("winstats").textContent = `${timeStr} on ${S.difficulty} · Best: ${bestStr}`;
+    $("overlay").className = "overlay show";
+  }
+  render();
+}
+
+function showHint() {
+  $("hintmsg").textContent = "";
+  // Build working grid (puzzle givens + user correct fills)
+  const working = S.puzzle.slice();
+  for (let i = 0; i < 81; i++) if (S.user[i] && S.user[i] === S.solution[i]) working[i] = S.user[i];
+  const h = logicHint(S.puzzle, working);
+  if (!h) {
+    $("hintmsg").textContent = "No simple logic move found — try a different approach.";
+    return;
+  }
+  S.hintCell = h.pos;
+  S.selected = h.pos;
+  S.user[h.pos] = h.val;
+  render();
+  setTimeout(() => { S.hintCell = -1; render(); }, 2000);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const selVal = S.selected >= 0 ? (S.user[S.selected] || S.puzzle[S.selected]) : 0;
+  const selR = S.selected >= 0 ? (S.selected / 9) | 0 : -1;
+  const selC = S.selected >= 0 ? S.selected % 9 : -1;
+  const selBR = selR >= 0 ? (selR / 3 | 0) : -1;
+  const selBC = selC >= 0 ? (selC / 3 | 0) : -1;
+
+  for (let i = 0; i < 81; i++) {
+    const el = gridEl.children[i];
+    const r = (i / 9) | 0, c = i % 9;
+    const given = S.puzzle[i] !== 0;
+    const val = given ? S.puzzle[i] : S.user[i];
+    el.textContent = val || "";
+
+    const isSel  = i === S.selected;
+    const isPeer = !isSel && selR >= 0 && (r === selR || c === selC || ((r / 3 | 0) === selBR && (c / 3 | 0) === selBC));
+    const isSame = !isSel && selVal && val === selVal;
+    const isErr  = !given && val && val !== S.solution[i];
+    const isHint = i === S.hintCell;
+
+    let cls = "cell";
+    if (given)  cls += " given";
+    if (isHint) cls += " hint-cell";
+    else if (isSel)  cls += " sel";
+    else if (isPeer) cls += " peer";
+    if (isSame && !isErr) cls += " same-num";
+    if (isErr)  cls += " error";
+    el.className = cls;
+
+    // Preserve inline border styles
+    const r2 = (i / 9) | 0, c2 = i % 9;
+    let bs = "";
+    if (c2 === 2 || c2 === 5) bs += "border-right:2px solid rgba(47,231,247,.5);";
+    if (r2 === 2 || r2 === 5) bs += "border-bottom:2px solid rgba(47,231,247,.5);";
+    el.style.cssText = bs;
+  }
+}
+
+// ── New game ──────────────────────────────────────────────────────────────────
+function newGame(diff) {
+  if (diff) S.difficulty = diff;
+  const sol = new Uint8Array(81);
+  fillGrid(sol);
+  S.solution = sol;
+  S.puzzle = makePuzzle(sol, S.difficulty);
+  S.user = new Uint8Array(81);
+  S.selected = -1; S.hintCell = -1; S.won = false;
+  S.startTime = Date.now();
+  $("hintmsg").textContent = "";
+  $("overlay").className = "overlay";
+  renderPills();
+  render();
+}
+
+function renderPills() {
+  const p = $("pills");
+  p.innerHTML = "";
+  for (const d of ["Easy", "Medium", "Hard"]) {
+    const b = document.createElement("button");
+    b.className = "pill" + (d === S.difficulty ? " on" : "");
+    b.textContent = d;
+    b.addEventListener("click", () => newGame(d));
+    p.appendChild(b);
+  }
+}
+
+function buildNumpad() {
+  const np = $("numpad");
+  np.innerHTML = "";
+  for (let v = 1; v <= 9; v++) {
+    const b = document.createElement("button");
+    b.className = "num-btn";
+    b.textContent = v;
+    b.addEventListener("click", () => inputNum(v));
+    np.appendChild(b);
+  }
+  const erase = document.createElement("button");
+  erase.className = "num-btn erase";
+  erase.textContent = "⌫";
+  erase.addEventListener("click", () => inputNum(0));
+  np.appendChild(erase);
+}
+
+// Keyboard support
+document.addEventListener("keydown", e => {
+  if (e.key >= "1" && e.key <= "9") { inputNum(parseInt(e.key, 10)); return; }
+  if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") { inputNum(0); return; }
+  if (S.selected < 0) return;
+  const r = (S.selected / 9) | 0, c = S.selected % 9;
+  if (e.key === "ArrowRight" && c < 8) { S.selected++; render(); }
+  if (e.key === "ArrowLeft"  && c > 0) { S.selected--; render(); }
+  if (e.key === "ArrowDown"  && r < 8) { S.selected += 9; render(); }
+  if (e.key === "ArrowUp"    && r > 0) { S.selected -= 9; render(); }
+});
+
+$("newgame").addEventListener("click", () => newGame());
+$("hint").addEventListener("click", showHint);
+$("newwin").addEventListener("click", () => newGame());
+
+buildGridDOM();
+buildNumpad();
+newGame();
+
+if ("serviceWorker" in navigator)
+  window.addEventListener("load", () => navigator.serviceWorker.register("../../sw.js"));
+</script>
+</body>
+</html>

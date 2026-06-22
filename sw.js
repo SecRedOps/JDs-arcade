@@ -1,8 +1,8 @@
 // ╔══════════════════════════════════════════╗
 // ║  CACHE VERSION — bump this on any change ║
-// ║  Current: arcade-v1                      ║
+// ║  Current: arcade-v2                      ║
 // ╚══════════════════════════════════════════╝
-const CACHE = "arcade-v1";
+const CACHE = "arcade-v2";
 
 const ASSETS = [
   "./",
@@ -13,6 +13,14 @@ const ASSETS = [
   "./shared/style.css",
   "./games/tube-sort/",
   "./games/tube-sort/index.html",
+  "./games/sudoku/",
+  "./games/sudoku/index.html",
+  "./games/nonogram/",
+  "./games/nonogram/index.html",
+  "./games/2048/",
+  "./games/2048/index.html",
+  "./games/lights-out/",
+  "./games/lights-out/index.html",
 ];
 
 self.addEventListener("install", e => {
