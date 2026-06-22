@@ -64,8 +64,17 @@
     <button class="btn" id="undo" disabled>Undo</button>
     <button class="btn primary" id="new">New</button>
   </div>
-  <p class="help">Tap a tube to pick it up, tap another to pour.<br>
-  Matching colors move together. Fill every tube with one color.</p>
+  <details class="how-to-play">
+    <summary><span class="arrow">▶</span> How to play</summary>
+    <div class="htp-body">
+      <div class="step"><div class="step-num">1</div><div><strong>Pick up a tube</strong> — tap any tube that has coloured liquid in it. It will lift up to show it's selected.</div></div>
+      <div class="step"><div class="step-num">2</div><div><strong>Pour into another tube</strong> — tap a second tube. The liquid pours if the top colour of the destination matches what you're pouring, or the destination is empty.</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>Matching segments move together</strong> — if several identical colours sit on top of each other they all pour at once.</div></div>
+      <div class="step"><div class="step-num">4</div><div><strong>Win</strong> by making every tube hold a single colour from bottom to top (or leaving it empty).</div></div>
+      <p><strong>Hint</strong> flashes the best next move in yellow/green. <strong>Undo</strong> reverses your last pour — but costs one move, so use it sparingly!</p>
+      <p>Try <strong>Easy</strong> first (6 colours, fewer tubes) and work up to <strong>Hard</strong> (12 colours) once you're comfortable.</p>
+    </div>
+  </details>
 </div>
 
 <div class="overlay" id="overlay">

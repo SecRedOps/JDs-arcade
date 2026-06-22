@@ -77,7 +77,17 @@
   <div class="pills" id="pills"></div>
   <div id="puzzle-wrap" class="center"></div>
   <div class="hintmsg center" id="hintmsg"></div>
-  <p class="help center">Tap to fill · Tap again to mark empty (✕) · Tap again to clear.<br>Fill the correct cells to win!</p>
+  <details class="how-to-play">
+    <summary><span class="arrow">▶</span> How to play</summary>
+    <div class="htp-body">
+      <p><strong>Goal:</strong> figure out which cells to fill in using only the number clues along the edges — like revealing a pixel-art picture.</p>
+      <div class="step"><div class="step-num">1</div><div><strong>Read the clues</strong> — the numbers above each column and to the left of each row tell you the lengths of the filled runs in that line. For example, <strong>3 1</strong> means a run of 3 filled cells, then at least one gap, then a run of 1 — in that order.</div></div>
+      <div class="step"><div class="step-num">2</div><div><strong>Fill a cell</strong> by tapping it once — it turns dark (filled). Tap again to mark it <strong>✕</strong> (you know it's empty). Tap a third time to clear it back to blank.</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>Use ✕ marks</strong> to keep track of cells you've worked out are definitely empty — this makes the logic much easier to follow.</div></div>
+      <div class="step"><div class="step-num">4</div><div><strong>Cross-reference rows and columns</strong> — a cell's correct state must satisfy both its row clue and its column clue at the same time.</div></div>
+      <p><strong>Win</strong> when all the filled cells match the hidden pattern. <strong>Hint</strong> deduces one cell for you using the same logic a human solver would use. Start on <strong>Small</strong> (5×5) until you get the hang of it!</p>
+    </div>
+  </details>
 </div>
 
 <div class="overlay" id="overlay">

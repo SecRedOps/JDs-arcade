@@ -61,7 +61,16 @@
   </div>
   <div class="board-wrap" id="board"></div>
   <div class="msg" id="msg"></div>
-  <p class="help">Arrow keys or swipe to slide. Merge matching tiles to reach 2048!</p>
+  <details class="how-to-play">
+    <summary><span class="arrow">▶</span> How to play</summary>
+    <div class="htp-body">
+      <div class="step"><div class="step-num">1</div><div><strong>Slide the tiles</strong> — use the arrow keys on a keyboard, or swipe in any direction on a touchscreen. Every tile on the board moves as far as possible in that direction.</div></div>
+      <div class="step"><div class="step-num">2</div><div><strong>Tiles merge when they collide</strong> — two tiles with the same number combine into one tile worth double (2+2 → 4, 4+4 → 8, and so on). Each tile can only merge once per slide.</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>A new tile appears</strong> after every slide — a 2 (90% chance) or 4 (10% chance) drops into a random empty cell.</div></div>
+      <div class="step"><div class="step-num">4</div><div><strong>Reach the 2048 tile</strong> to win! You can keep playing after that to chase a higher score.</div></div>
+      <p><strong>Game over</strong> when the board is completely full and no adjacent tiles can merge. Keep the highest-value tile in a corner and build toward it to last longer!</p>
+    </div>
+  </details>
 </div>
 
 <div class="overlay" id="overlay">

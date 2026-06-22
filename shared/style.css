@@ -43,6 +43,43 @@ body {
 .card h2 { color: #fff; margin: 8px 0 4px; font-size: 20px; }
 .card p { color: #8a93a8; font-size: 14px; margin: 0 0 20px; }
 .card .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+/* ── How to play (collapsible) ────────────────────────────────────────────── */
+details.how-to-play {
+  margin-top: 16px;
+  border: 1px solid #1b2233;
+  border-radius: 12px;
+  background: rgba(255,255,255,.015);
+}
+details.how-to-play summary {
+  padding: 10px 14px;
+  font-size: 13px; font-weight: 600;
+  color: #6b7488; cursor: pointer;
+  user-select: none; list-style: none;
+  display: flex; align-items: center; gap: 7px;
+}
+details.how-to-play summary::-webkit-details-marker { display: none; }
+details.how-to-play summary .arrow { font-size: 9px; transition: transform .15s; }
+details.how-to-play[open] summary .arrow { transform: rotate(90deg); }
+details.how-to-play[open] summary { color: #cfd6e4; border-bottom: 1px solid #1b2233; }
+details.how-to-play .htp-body {
+  padding: 12px 14px 14px;
+  font-size: 12px; color: #8a93a8; line-height: 1.65;
+}
+details.how-to-play .htp-body p { margin: 0 0 8px; }
+details.how-to-play .htp-body p:last-child { margin: 0; }
+details.how-to-play .htp-body strong { color: #cfd6e4; }
+details.how-to-play .htp-body .step {
+  display: flex; gap: 8px; margin-bottom: 7px;
+}
+details.how-to-play .htp-body .step-num {
+  flex-shrink: 0;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #11324a; border: 1px solid #1d4a66;
+  color: #2fe7f7; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
