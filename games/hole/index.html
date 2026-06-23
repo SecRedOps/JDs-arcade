@@ -143,6 +143,10 @@ const CFG = {
 
   aiColors: ["#ff6b9d","#ffd93d","#6bcb77","#ff922b","#a9e4f7"],
   aiNames:  ["Rift α","Rift β","Rift γ","Rift δ","Rift ε"],
+
+  // ── Camera zoom ────────────────────────────────────────────────────────────
+  zoomRef: 40,             // player.r at which zoom = 1.0 (28 = start radius)
+  minZoom: 0.22,           // most zoomed-out the camera goes
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -151,6 +155,9 @@ const CFG = {
 const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
 function tryStore(k, v) { try { localStorage.setItem(k, String(v)); } catch(_) {} }
 function tryLoad(k) { try { return localStorage.getItem(k); } catch(_) { return null; } }
+
+const PERSON_SPEED      = 38;   // px/s normal walk
+const PERSON_FLEE_SPEED = 95;   // px/s when a large hole is nearby
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── SPATIAL GRID ──────────────────────────────────────────────────────────────
@@ -222,6 +229,7 @@ let objs;         // world object array
 let holes;        // player hole + AI holes
 let player;       // ref to player's hole
 let cam;          // {x,y} — top-left of viewport in world coords
+let zoom = 1;     // camera zoom: 1 = normal, <1 = zoomed out
 let timeLeft;
 let gameOver;
 let bestScore;
@@ -259,15 +267,24 @@ function makeHole(x, y, r, isPlayer, name, color) {
 
 // ── Object factory ────────────────────────────────────────────────────────────
 function makeObj(type, x, y) {
-  return {
+  const obj = {
     x, y, r: type.r, tier: type.tier, pts: type.pts,
     color: type.color, shape: type.shape, label: type.label,
     eaten: false,
     swallowing: false, swallowT: 0, swallowDur: 0.4,
     swallowHole: null,
-    sx: x, sy: y,       // start pos for swallow anim
+    sx: x, sy: y,
     origR: type.r,
+    mobile: type.shape === "pers",
   };
+  if (obj.mobile) {
+    const ang = Math.random() * Math.PI * 2;
+    obj.vx = Math.cos(ang) * PERSON_SPEED;
+    obj.vy = Math.sin(ang) * PERSON_SPEED;
+    obj.wanderTimer = Math.random() * 4;
+    obj.walkPhase  = Math.random() * Math.PI * 2;
+  }
+  return obj;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -332,9 +349,9 @@ canvas.addEventListener("touchend", e => {
 }, { passive: false });
 
 function getPlayerInput() {
-  // Touch: move toward touch position in world space
+  // Touch: move toward touch position in world space (account for zoom)
   if (touch.active) {
-    const wx = touch.x + cam.x, wy = touch.y + cam.y;
+    const wx = touch.x / zoom + cam.x, wy = touch.y / zoom + cam.y;
     const dx = wx - player.x, dy = wy - player.y;
     const d  = Math.sqrt(dx*dx + dy*dy);
     if (d > 8) {
@@ -439,6 +456,58 @@ function checkHoleCollisions() {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── PEDESTRIANS ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function updatePedestrians(dt) {
+  for (let i = 0; i < objs.length; i++) {
+    const o = objs[i];
+    if (!o.mobile || o.eaten) continue;
+
+    // Flee from any hole big enough to eat this person
+    let fleeX = 0, fleeY = 0;
+    for (let j = 0; j < holes.length; j++) {
+      const h = holes[j];
+      if (h.respawning || h.r <= o.r * 1.1) continue;
+      const dx = o.x - h.x, dy = o.y - h.y;
+      const d2 = dx*dx + dy*dy;
+      const fleeR = h.r * 3.5;
+      if (d2 < fleeR * fleeR) {
+        const d = Math.sqrt(d2) || 1;
+        const strength = 1 - Math.sqrt(d2) / fleeR;
+        fleeX += (dx / d) * strength;
+        fleeY += (dy / d) * strength;
+      }
+    }
+
+    if (fleeX !== 0 || fleeY !== 0) {
+      const fl = Math.sqrt(fleeX*fleeX + fleeY*fleeY) || 1;
+      o.vx = (fleeX / fl) * PERSON_FLEE_SPEED;
+      o.vy = (fleeY / fl) * PERSON_FLEE_SPEED;
+    } else {
+      o.wanderTimer -= dt;
+      if (o.wanderTimer <= 0) {
+        const ang = Math.random() * Math.PI * 2;
+        o.vx = Math.cos(ang) * PERSON_SPEED;
+        o.vy = Math.sin(ang) * PERSON_SPEED;
+        o.wanderTimer = 2 + Math.random() * 4;
+      }
+    }
+
+    // Move and bounce off map edges
+    grid.remove(o);
+    let nx = o.x + o.vx * dt;
+    let ny = o.y + o.vy * dt;
+    if (nx < o.r)            { nx = o.r;             o.vx =  Math.abs(o.vx); }
+    if (nx > CFG.mapW - o.r) { nx = CFG.mapW - o.r;  o.vx = -Math.abs(o.vx); }
+    if (ny < o.r)            { ny = o.r;             o.vy =  Math.abs(o.vy); }
+    if (ny > CFG.mapH - o.r) { ny = CFG.mapH - o.r;  o.vy = -Math.abs(o.vy); }
+    o.x = nx; o.y = ny;
+    o.walkPhase += dt * 6;
+    grid.insert(o);
+  }
+}
+
 function getTier(r) {
   for (let i = CFG.tierR.length - 2; i >= 0; i--)
     if (r > CFG.tierR[i]) return i;
@@ -526,15 +595,16 @@ function updateAI(hole, dt) {
 // ── RENDERING ─────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function drawMap() {
+  const W = VW / zoom, H = VH / zoom;  // world pixels visible at current zoom
   ctx.fillStyle = ROAD_COLOR;
-  ctx.fillRect(0, 0, VW, VH);
+  ctx.fillRect(0, 0, W, H);
 
   const p = CFG.blockPitch, half = CFG.roadW / 2;
   const inner = p - CFG.roadW;
   const bxMin = Math.max(0, Math.floor((cam.x - half) / p));
-  const bxMax = Math.min(Math.ceil(CFG.mapW / p), Math.ceil((cam.x + VW + half) / p));
+  const bxMax = Math.min(Math.ceil(CFG.mapW / p), Math.ceil((cam.x + W + half) / p));
   const byMin = Math.max(0, Math.floor((cam.y - half) / p));
-  const byMax = Math.min(Math.ceil(CFG.mapH / p), Math.ceil((cam.y + VH + half) / p));
+  const byMax = Math.min(Math.ceil(CFG.mapH / p), Math.ceil((cam.y + H + half) / p));
 
   for (let bx = bxMin; bx <= bxMax; bx++) {
     for (let by = byMin; by <= byMax; by++) {
@@ -548,15 +618,16 @@ function drawMap() {
   ctx.strokeStyle = "rgba(190,185,175,0.55)";
   ctx.setLineDash([16, 16]);
   ctx.lineWidth = 1.5;
+  const W2 = VW / zoom, H2 = VH / zoom;
   for (let bx = 0; bx * p <= CFG.mapW; bx++) {
     const sx = bx * p - cam.x;
-    if (sx < -20 || sx > VW + 20) continue;
-    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, VH); ctx.stroke();
+    if (sx < -20 || sx > W2 + 20) continue;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H2); ctx.stroke();
   }
   for (let by = 0; by * p <= CFG.mapH; by++) {
     const sy = by * p - cam.y;
-    if (sy < -20 || sy > VH + 20) continue;
-    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(VW, sy); ctx.stroke();
+    if (sy < -20 || sy > H2 + 20) continue;
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W2, sy); ctx.stroke();
   }
   ctx.setLineDash([]);
   ctx.restore();
@@ -581,11 +652,21 @@ function drawObj(o, sx, sy, scale, alpha) {
       ctx.fillStyle = c; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.beginPath(); ctx.arc(r*0.28, -r*0.22, r*0.38, 0, Math.PI*2); ctx.fill();
       break;
-    case "pers": { // top-down person silhouette
+    case "pers": { // top-down person silhouette, rotates to face movement
+      if (o.mobile && (o.vx || o.vy)) ctx.rotate(Math.atan2(o.vy, o.vx) - Math.PI / 2);
+      // Body
       ctx.fillStyle = c;
-      ctx.beginPath(); ctx.ellipse(0, r*0.15, r*0.55, r*0.8, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, r*0.1, r*0.5, r*0.72, 0, 0, Math.PI*2); ctx.fill();
+      // Head
       ctx.fillStyle = "#bf7350";
-      ctx.beginPath(); ctx.arc(0, -r*0.55, r*0.42, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -r*0.52, r*0.38, 0, Math.PI*2); ctx.fill();
+      // Animated legs
+      if (o.mobile && o.walkPhase !== undefined) {
+        const leg = Math.sin(o.walkPhase) * r * 0.22;
+        ctx.fillStyle = "#3a2a1e";
+        ctx.beginPath(); ctx.ellipse(-r*0.17, r*0.68 + leg,  r*0.14, r*0.22, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse( r*0.17, r*0.68 - leg,  r*0.14, r*0.22, 0, 0, Math.PI*2); ctx.fill();
+      }
       break;
     }
     case "rect": // bench / small crate
@@ -647,7 +728,8 @@ function drawObjects() {
     }
 
     const sx = o.x - cam.x, sy = o.y - cam.y;
-    if (sx + o.r < 0 || sx - o.r > VW || sy + o.r < 0 || sy - o.r > VH) continue;
+    const _W = VW / zoom, _H = VH / zoom;
+    if (sx + o.r < 0 || sx - o.r > _W || sy + o.r < 0 || sy - o.r > _H) continue;
     drawObj(o, sx, sy, 1, 1);
   }
 }
@@ -670,7 +752,8 @@ function drawParticles() {
 function drawHole(h) {
   if (h.respawning && h.respawnTimer > 0) return;
   const sx = h.x - cam.x, sy = h.y - cam.y;
-  if (sx + h.r < -20 || sx - h.r > VW + 20 || sy + h.r < -20 || sy - h.r > VH + 20) return;
+  const _W = VW / zoom, _H = VH / zoom;
+  if (sx + h.r < -20 || sx - h.r > _W + 20 || sy + h.r < -20 || sy - h.r > _H + 20) return;
 
   const wobble = 1 + Math.sin(Date.now() / 250) * 0.025 + h.eatAnim;
   const dispR = h.r * wobble;
@@ -832,6 +915,9 @@ function loop(ts) {
     checkEating(holes[i]);
   }
 
+  // ── Pedestrians ────────────────────────────────────────────────────────────
+  updatePedestrians(dt);
+
   // ── Hole-hole collisions ───────────────────────────────────────────────────
   checkHoleCollisions();
 
@@ -867,18 +953,25 @@ function loop(ts) {
     if (bannerTimer <= 0) banner.style.opacity = "0";
   }
 
+  // ── Zoom (smoothly track player size) ─────────────────────────────────────
+  if (!player.respawning) {
+    const tz = clamp(CFG.zoomRef / Math.max(player.r, CFG.zoomRef), CFG.minZoom, 1.0);
+    zoom += (tz - zoom) * Math.min(1, dt * 2.5);
+  }
+
   // ── Camera ─────────────────────────────────────────────────────────────────
-  const targetCamX = player.x - VW / 2;
-  const targetCamY = player.y - VH / 2;
+  const _vw = VW / zoom, _vh = VH / zoom;
+  const targetCamX = player.x - _vw / 2;
+  const targetCamY = player.y - _vh / 2;
   const lf = Math.min(1, CFG.camLerp * dt);
   cam.x += (targetCamX - cam.x) * lf;
   cam.y += (targetCamY - cam.y) * lf;
-  cam.x = clamp(cam.x, 0, CFG.mapW - VW);
-  cam.y = clamp(cam.y, 0, CFG.mapH - VH);
+  cam.x = clamp(cam.x, 0, Math.max(0, CFG.mapW - _vw));
+  cam.y = clamp(cam.y, 0, Math.max(0, CFG.mapH - _vh));
 
   // ── Render ─────────────────────────────────────────────────────────────────
   ctx.save();
-  ctx.scale(dpr, dpr);
+  ctx.scale(dpr * zoom, dpr * zoom);  // zoom applied here; draw funcs use world-minus-cam coords
   drawMap();
   drawObjects();
   drawParticles();
@@ -917,7 +1010,7 @@ function newGame() {
   document.getElementById("overlay").className = "overlay";
   respawnNotice.style.display = "none";
   banner.style.opacity = "0";
-  bannerTimer = 0; lastTier = 0;
+  bannerTimer = 0; lastTier = 0; zoom = 1;
 
   // Reset particle pool
   for (let i = 0; i < POOL_SIZE; i++) particles[i].active = false;
