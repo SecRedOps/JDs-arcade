@@ -1,7 +1,7 @@
 {
   "name": "Arcade",
   "short_name": "Arcade",
-  "description": "Offline puzzle games — Tube Sort and more",
+  "description": "Offline arcade games",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
