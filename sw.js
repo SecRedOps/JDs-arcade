@@ -1,8 +1,8 @@
 // ╔══════════════════════════════════════════╗
 // ║  CACHE VERSION — bump this on any change ║
-// ║  Current: arcade-v2                      ║
+// ║  Current: arcade-v3                      ║
 // ╚══════════════════════════════════════════╝
-const CACHE = "arcade-v2";
+const CACHE = "arcade-v3";
 
 const ASSETS = [
   "./",
@@ -21,6 +21,8 @@ const ASSETS = [
   "./games/2048/index.html",
   "./games/lights-out/",
   "./games/lights-out/index.html",
+  "./games/hole/",
+  "./games/hole/index.html",
 ];
 
 self.addEventListener("install", e => {
