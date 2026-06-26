@@ -145,8 +145,8 @@ const CFG = {
   aiNames:  ["Rift α","Rift β","Rift γ","Rift δ","Rift ε"],
 
   // ── Camera zoom ────────────────────────────────────────────────────────────
-  zoomRef: 40,             // player.r at which zoom = 1.0 (28 = start radius)
-  minZoom: 0.22,           // most zoomed-out the camera goes
+  zoomRef: 28,             // player.r at which zoom = 1.0 (equals playerStartR)
+  minZoom: 0.2,            // most zoomed-out the camera goes
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -228,7 +228,7 @@ let grid;         // SpatialGrid
 let objs;         // world object array
 let holes;        // player hole + AI holes
 let player;       // ref to player's hole
-let cam;          // {x,y} — top-left of viewport in world coords
+let cam;          // {x,y} — CENTER of viewport in world coords
 let zoom = 1;     // camera zoom: 1 = normal, <1 = zoomed out
 let timeLeft;
 let gameOver;
@@ -349,9 +349,11 @@ canvas.addEventListener("touchend", e => {
 }, { passive: false });
 
 function getPlayerInput() {
-  // Touch: move toward touch position in world space (account for zoom)
+  // Touch: move toward touch position in world space
+  // Center-pivot: touch offset from viewport center / zoom + world center
   if (touch.active) {
-    const wx = touch.x / zoom + cam.x, wy = touch.y / zoom + cam.y;
+    const wx = (touch.x - VW / 2) / zoom + cam.x;
+    const wy = (touch.y - VH / 2) / zoom + cam.y;
     const dx = wx - player.x, dy = wy - player.y;
     const d  = Math.sqrt(dx*dx + dy*dy);
     if (d > 8) {
@@ -595,39 +597,38 @@ function updateAI(hole, dt) {
 // ── RENDERING ─────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 function drawMap() {
-  const W = VW / zoom, H = VH / zoom;  // world pixels visible at current zoom
+  // All coords are in world space — the ctx transform (center-pivot + zoom) handles screen mapping.
   ctx.fillStyle = ROAD_COLOR;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, CFG.mapW, CFG.mapH);  // fill entire map; GPU clips to canvas
 
-  const p = CFG.blockPitch, half = CFG.roadW / 2;
-  const inner = p - CFG.roadW;
-  const bxMin = Math.max(0, Math.floor((cam.x - half) / p));
-  const bxMax = Math.min(Math.ceil(CFG.mapW / p), Math.ceil((cam.x + W + half) / p));
-  const byMin = Math.max(0, Math.floor((cam.y - half) / p));
-  const byMax = Math.min(Math.ceil(CFG.mapH / p), Math.ceil((cam.y + H + half) / p));
+  const p = CFG.blockPitch, half = CFG.roadW / 2, inner = p - CFG.roadW;
+  const hw = VW / (2 * zoom), hh = VH / (2 * zoom);  // half-viewport in world units
+  const bxMin = Math.max(0, Math.floor((cam.x - hw - half) / p));
+  const bxMax = Math.min(Math.ceil(CFG.mapW / p), Math.ceil((cam.x + hw + half) / p));
+  const byMin = Math.max(0, Math.floor((cam.y - hh - half) / p));
+  const byMax = Math.min(Math.ceil(CFG.mapH / p), Math.ceil((cam.y + hh + half) / p));
 
   for (let bx = bxMin; bx <= bxMax; bx++) {
     for (let by = byMin; by <= byMax; by++) {
       ctx.fillStyle = BLOCK_PAL[(bx * 7 + by * 13) % BLOCK_PAL.length];
-      ctx.fillRect(bx * p + half - cam.x, by * p + half - cam.y, inner, inner);
+      ctx.fillRect(bx * p + half, by * p + half, inner, inner);  // world coords
     }
   }
 
-  // Road centre dashes (subtle)
+  // Road centre dashes
   ctx.save();
   ctx.strokeStyle = "rgba(190,185,175,0.55)";
   ctx.setLineDash([16, 16]);
   ctx.lineWidth = 1.5;
-  const W2 = VW / zoom, H2 = VH / zoom;
   for (let bx = 0; bx * p <= CFG.mapW; bx++) {
-    const sx = bx * p - cam.x;
-    if (sx < -20 || sx > W2 + 20) continue;
-    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H2); ctx.stroke();
+    const sx = bx * p;
+    if (sx < cam.x - hw - 20 || sx > cam.x + hw + 20) continue;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, CFG.mapH); ctx.stroke();
   }
   for (let by = 0; by * p <= CFG.mapH; by++) {
-    const sy = by * p - cam.y;
-    if (sy < -20 || sy > H2 + 20) continue;
-    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W2, sy); ctx.stroke();
+    const sy = by * p;
+    if (sy < cam.y - hh - 20 || sy > cam.y + hh + 20) continue;
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(CFG.mapW, sy); ctx.stroke();
   }
   ctx.setLineDash([]);
   ctx.restore();
@@ -720,17 +721,18 @@ function drawObjects() {
     if (o.swallowing) {
       const t = o.swallowT / o.swallowDur;
       const ease = 1 - (1-t)*(1-t);
-      const hx = o.swallowHole.x - cam.x, hy = o.swallowHole.y - cam.y;
-      const sx = o.sx - cam.x + (hx - (o.sx - cam.x)) * ease;
-      const sy = o.sy - cam.y + (hy - (o.sy - cam.y)) * ease;
-      drawObj(o, sx, sy, 1 - ease * 0.95, 1 - ease);
+      // interpolate in world space toward the hole
+      const wx = o.sx + (o.swallowHole.x - o.sx) * ease;
+      const wy = o.sy + (o.swallowHole.y - o.sy) * ease;
+      drawObj(o, wx, wy, 1 - ease * 0.95, 1 - ease);
       continue;
     }
 
-    const sx = o.x - cam.x, sy = o.y - cam.y;
-    const _W = VW / zoom, _H = VH / zoom;
-    if (sx + o.r < 0 || sx - o.r > _W || sy + o.r < 0 || sy - o.r > _H) continue;
-    drawObj(o, sx, sy, 1, 1);
+    // World-space culling: skip if outside visible rect
+    const hw = VW / (2 * zoom), hh = VH / (2 * zoom);
+    if (o.x + o.r < cam.x - hw || o.x - o.r > cam.x + hw ||
+        o.y + o.r < cam.y - hh || o.y - o.r > cam.y + hh) continue;
+    drawObj(o, o.x, o.y, 1, 1);
   }
 }
 
@@ -740,7 +742,7 @@ function drawParticles() {
     if (!p.active) continue;
     const frac = p.t / p.dur;
     ctx.beginPath();
-    ctx.arc(p.x - cam.x, p.y - cam.y, p.r * frac, 0, Math.PI*2);
+    ctx.arc(p.x, p.y, p.r * frac, 0, Math.PI*2);
     ctx.strokeStyle = p.color;
     ctx.lineWidth = 2.5 * (1 - frac);
     ctx.globalAlpha = (1 - frac) * 0.7;
@@ -751,9 +753,10 @@ function drawParticles() {
 
 function drawHole(h) {
   if (h.respawning && h.respawnTimer > 0) return;
-  const sx = h.x - cam.x, sy = h.y - cam.y;
-  const _W = VW / zoom, _H = VH / zoom;
-  if (sx + h.r < -20 || sx - h.r > _W + 20 || sy + h.r < -20 || sy - h.r > _H + 20) return;
+  const sx = h.x, sy = h.y;  // world coords; ctx transform handles screen mapping
+  const hw = VW / (2 * zoom), hh = VH / (2 * zoom);
+  if (sx + h.r < cam.x - hw - 20 || sx - h.r > cam.x + hw + 20 ||
+      sy + h.r < cam.y - hh - 20 || sy - h.r > cam.y + hh + 20) return;
 
   const wobble = 1 + Math.sin(Date.now() / 250) * 0.025 + h.eatAnim;
   const dispR = h.r * wobble;
@@ -953,25 +956,30 @@ function loop(ts) {
     if (bannerTimer <= 0) banner.style.opacity = "0";
   }
 
-  // ── Zoom (smoothly track player size) ─────────────────────────────────────
-  if (!player.respawning) {
+  // ── Zoom (tracks player size; starts at 1.0 and immediately decreases on growth) ──
+  {
     const tz = clamp(CFG.zoomRef / Math.max(player.r, CFG.zoomRef), CFG.minZoom, 1.0);
-    zoom += (tz - zoom) * Math.min(1, dt * 2.5);
+    zoom += (tz - zoom) * Math.min(1, dt * 3);
   }
 
-  // ── Camera ─────────────────────────────────────────────────────────────────
-  const _vw = VW / zoom, _vh = VH / zoom;
-  const targetCamX = player.x - _vw / 2;
-  const targetCamY = player.y - _vh / 2;
-  const lf = Math.min(1, CFG.camLerp * dt);
-  cam.x += (targetCamX - cam.x) * lf;
-  cam.y += (targetCamY - cam.y) * lf;
-  cam.x = clamp(cam.x, 0, Math.max(0, CFG.mapW - _vw));
-  cam.y = clamp(cam.y, 0, Math.max(0, CFG.mapH - _vh));
+  // ── Camera: tracks player (world center of viewport) with spring ────────────
+  {
+    const lf = Math.min(1, CFG.camLerp * dt);
+    cam.x += (player.x - cam.x) * lf;
+    cam.y += (player.y - cam.y) * lf;
+    // Soft-clamp so the viewport doesn't show beyond the map edges
+    const hw = VW / (2 * zoom), hh = VH / (2 * zoom);
+    cam.x = clamp(cam.x, hw, Math.max(hw, CFG.mapW - hw));
+    cam.y = clamp(cam.y, hh, Math.max(hh, CFG.mapH - hh));
+  }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render: center-pivot transform ─────────────────────────────────────────
+  // screen = (world - cam) * zoom + viewport_center
   ctx.save();
-  ctx.scale(dpr * zoom, dpr * zoom);  // zoom applied here; draw funcs use world-minus-cam coords
+  ctx.scale(dpr, dpr);
+  ctx.translate(VW / 2, VH / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-cam.x, -cam.y);
   drawMap();
   drawObjects();
   drawParticles();
@@ -1035,10 +1043,7 @@ function newGame() {
     holes.push(makeHole(ax, ay, ar, false, CFG.aiNames[i], CFG.aiColors[i]));
   }
 
-  cam = {
-    x: clamp(cx - VW / 2, 0, CFG.mapW - VW),
-    y: clamp(cy - VH / 2, 0, CFG.mapH - VH),
-  };
+  cam = { x: cx, y: cy };  // world center of viewport (equals player start)
   timeLeft = CFG.roundTime;
   gameOver = false;
   lastTs   = 0;
