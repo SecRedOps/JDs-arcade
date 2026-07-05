@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sky Stack</title>
+<meta name="theme-color" content="#06080d">
+<link rel="manifest" href="../../manifest.json">
+<link rel="icon" href="../../icon-192.png">
+<link rel="apple-touch-icon" href="../../icon-192.png">
+<link rel="stylesheet" href="../../shared/style.css">
+<style>
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: .04em; color: #2fe7f7; margin: 0; }
+  .stats { display: flex; gap: 14px; }
+  .stat { font-size: 13px; color: #8a93a8; }
+  .stat b { color: #fff; }
+  .board-wrap {
+    width: 100%;
+    background: rgba(255,255,255,.02);
+    border: 1px solid #1b2233; border-radius: 12px;
+    overflow: hidden;
+    touch-action: none; user-select: none;
+  }
+  canvas { display: block; width: 100%; cursor: pointer; }
+  .msg { text-align: center; font-size: 12px; color: #f8ec22; margin-top: 10px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="../../">← Back</a>
+  <header>
+    <h1>Sky Stack</h1>
+    <div class="stats">
+      <div class="stat">Score <b id="score">0</b></div>
+      <div class="stat">Best <b id="best">0</b></div>
+    </div>
+  </header>
+  <div class="board-wrap"><canvas id="c"></canvas></div>
+  <div class="msg" id="msg">Tap, click, or press Space to drop the block</div>
+  <details class="how-to-play">
+    <summary><span class="arrow">▶</span> How to play</summary>
+    <div class="htp-body">
+      <div class="step"><div class="step-num">1</div><div><strong>Watch the block slide</strong> back and forth above the tower. It never stops on its own — you decide when it lands.</div></div>
+      <div class="step"><div class="step-num">2</div><div><strong>Tap anywhere</strong> (or press Space) to drop it. Whatever hangs over the edge of the block below gets sliced off and falls away — your tower gets narrower.</div></div>
+      <div class="step"><div class="step-num">3</div><div><strong>Land it perfectly</strong> (lined up with the block below) and nothing is lost. Chain three perfect drops in a row and your tower grows back wider!</div></div>
+      <div class="step"><div class="step-num">4</div><div><strong>Game over</strong> when you miss the tower completely. Blocks slide faster the higher you build, so stay sharp.</div></div>
+      <p><strong>Scoring:</strong> 1 point per block, 2 for a perfect drop. Your best score is saved on this device.</p>
+    </div>
+  </details>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <div class="big">🏗</div>
+    <h2>Tower toppled!</h2>
+    <p id="ov-stats"></p>
+    <div class="row">
+      <button class="btn primary" id="btn-replay">Play again</button>
+      <a class="btn" href="../../">Hub</a>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const BH = 26;            // block height (CSS px)
+const BASE_W_FRAC = 0.55; // base block width as fraction of canvas width
+const PERFECT = 5;        // px tolerance for a perfect drop
+const SPEED_BASE = 150;   // slide speed at level 0 (px/s)
+const SPEED_PER = 4;      // extra speed per level
+const SPEED_MAX = 360;
+const REGROW = 12;        // width regained on every 3rd consecutive perfect
+const GRAVITY = 1400;     // falling-piece gravity
+
+const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+function tryStore(k, v) { try { localStorage.setItem(k, String(v)); } catch(_) {} }
+function tryLoad(k) { try { return localStorage.getItem(k); } catch(_) { return null; } }
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const dpr = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0; // CSS px
+
+function resize() {
+  W = canvas.parentElement.clientWidth;
+  H = clamp(window.innerHeight - 240, 380, 560);
+  canvas.style.height = H + "px";
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let blocks;   // [{x, w, hue}] bottom-up; y implied by index
+let active;   // {x, w, hue, dir}
+let fallers;  // [{x, y, w, hue, vy, rot, vr}]
+let flashes;  // [{x, y, w, t}] perfect-drop rings
+let score, combo, over;
+let camY = 0;
+let baseW;
+let best = parseInt(tryLoad("stack-best") || "0", 10);
+
+const $ = id => document.getElementById(id);
+
+function levelSpeed() {
+  return Math.min(SPEED_MAX, SPEED_BASE + blocks.length * SPEED_PER);
+}
+
+function spawnActive() {
+  const prev = blocks[blocks.length - 1];
+  const fromLeft = blocks.length % 2 === 0;
+  active = {
+    x: fromLeft ? -prev.w : W,
+    w: prev.w,
+    hue: (prev.hue + 4) % 360,
+    dir: fromLeft ? 1 : -1,
+  };
+}
+
+function newGame() {
+  const hue0 = Math.random() * 360 | 0;
+  baseW = W * BASE_W_FRAC;
+  blocks = [{ x: (W - baseW) / 2, w: baseW, hue: hue0 }];
+  fallers = []; flashes = [];
+  score = 0; combo = 0; over = false; camY = 0;
+  spawnActive();
+  $("overlay").className = "overlay";
+  $("msg").textContent = "Tap, click, or press Space to drop the block";
+  render_hud();
+}
+
+function render_hud() {
+  $("score").textContent = score;
+  $("best").textContent = best;
+}
+
+// ── Drop ──────────────────────────────────────────────────────────────────────
+function drop() {
+  if (over) return;
+  const prev = blocks[blocks.length - 1];
+  const oStart = Math.max(active.x, prev.x);
+  const oEnd = Math.min(active.x + active.w, prev.x + prev.w);
+  const ow = oEnd - oStart;
+
+  if (ow <= 0) {
+    // Complete miss — the whole block tumbles, game over
+    fallers.push({ x: active.x, y: towerTopY(), w: active.w, hue: active.hue,
+                   vy: 0, rot: 0, vr: (active.dir || 1) * 2.2 });
+    endGame();
+    return;
+  }
+
+  const delta = Math.abs(active.x - prev.x);
+  let nx, nw;
+  if (delta <= PERFECT) {
+    // Perfect: snap, no loss, combo bonus
+    nx = prev.x; nw = prev.w;
+    combo++;
+    score += 2;
+    flashes.push({ x: nx, w: nw, level: blocks.length + 1, t: 0 });
+    if (combo % 3 === 0) {
+      const grow = Math.min(REGROW, baseW - nw);
+      if (grow > 0) { nx -= grow / 2; nw += grow; }
+      $("msg").textContent = `🔥 ${combo} perfect in a row — tower regrows!`;
+    } else {
+      $("msg").textContent = "✨ Perfect!";
+    }
+  } else {
+    // Trim the overhang; it falls away
+    nx = oStart; nw = ow;
+    const cutW = active.w - ow;
+    const cutX = active.x < prev.x ? active.x : oEnd;
+    fallers.push({ x: cutX, y: towerTopY(), w: cutW, hue: active.hue,
+                   vy: 0, rot: 0, vr: (cutX < nx ? -1 : 1) * (1 + Math.random()) });
+    score += 1;
+    combo = 0;
+    $("msg").textContent = "";
+  }
+
+  blocks.push({ x: nx, w: nw, hue: active.hue });
+  if (score > best) { best = score; tryStore("stack-best", best); }
+  render_hud();
+  spawnActive();
+}
+
+function towerTopY() {
+  // Screen Y of the slot the active block occupies (top of tower)
+  return H - 30 - (blocks.length + 1) * BH + camY;
+}
+
+function endGame() {
+  over = true;
+  if (score > best) { best = score; tryStore("stack-best", best); }
+  render_hud();
+  $("ov-stats").textContent =
+    `Height: ${blocks.length - 1} blocks · Score: ${score} · Best: ${best}`;
+  setTimeout(() => { $("overlay").className = "overlay show"; }, 550);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener("pointerdown", e => { e.preventDefault(); drop(); });
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); drop(); }
+});
+$("btn-replay").addEventListener("click", newGame);
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+let lastTs = 0;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) lastTs = 0; });
+
+function blockFill(b, y) {
+  ctx.fillStyle = `hsl(${b.hue}, 55%, 50%)`;
+  ctx.fillRect(b.x, y, b.w, BH);
+  ctx.fillStyle = `hsl(${b.hue}, 60%, 66%)`;   // lit top edge
+  ctx.fillRect(b.x, y, b.w, 4);
+  ctx.fillStyle = `hsl(${b.hue}, 55%, 38%)`;   // shaded right edge
+  ctx.fillRect(b.x + b.w - 5, y + 4, 5, BH - 4);
+}
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = lastTs ? Math.min((ts - lastTs) / 1000, 1 / 20) : 0.016;
+  lastTs = ts;
+
+  // Slide the active block
+  if (!over) {
+    active.x += active.dir * levelSpeed() * dt;
+    if (active.x < -40) { active.x = -40; active.dir = 1; }
+    if (active.x + active.w > W + 40) { active.x = W + 40 - active.w; active.dir = -1; }
+  }
+
+  // Camera eases so the top of the tower sits ~55% up the canvas
+  const camTarget = Math.max(0, (blocks.length + 1) * BH - H * 0.55);
+  camY += (camTarget - camY) * Math.min(1, dt * 6);
+
+  // Fallers
+  for (let i = fallers.length - 1; i >= 0; i--) {
+    const f = fallers[i];
+    f.vy += GRAVITY * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
+    if (f.y > H + 80) fallers.splice(i, 1);
+  }
+
+  // ── Draw ──
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = "#0d1019";
+  ctx.fillRect(0, 0, W, H);
+
+  // Tower (only visible rows)
+  for (let i = 0; i < blocks.length; i++) {
+    const y = H - 30 - (i + 1) * BH + camY;
+    if (y > H || y + BH < 0) continue;
+    blockFill(blocks[i], y);
+  }
+
+  // Ground
+  ctx.fillStyle = "#1b2233";
+  const gy = H - 30 + camY;
+  if (gy < H) ctx.fillRect(0, gy, W, H - gy);
+
+  // Active block with a soft glow
+  if (!over) {
+    const y = towerTopY();
+    ctx.save();
+    ctx.shadowColor = `hsl(${active.hue}, 70%, 60%)`;
+    ctx.shadowBlur = 14;
+    blockFill(active, y);
+    ctx.restore();
+  }
+
+  // Fallers
+  for (const f of fallers) {
+    ctx.save();
+    ctx.translate(f.x + f.w / 2, f.y + BH / 2);
+    ctx.rotate(f.rot);
+    ctx.globalAlpha = clamp(1 - (f.y - H * 0.5) / (H * 0.6), 0.15, 1);
+    blockFill({ x: -f.w / 2, w: f.w, hue: f.hue }, -BH / 2);
+    ctx.restore();
+  }
+
+  // Perfect-drop rings
+  for (let i = flashes.length - 1; i >= 0; i--) {
+    const fl = flashes[i];
+    fl.t += dt;
+    const frac = fl.t / 0.45;
+    if (frac >= 1) { flashes.splice(i, 1); continue; }
+    const fy = H - 30 - fl.level * BH + camY; // follows the landed block's row
+    ctx.globalAlpha = 1 - frac;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2.5 * (1 - frac);
+    ctx.strokeRect(fl.x - frac * 14, fy - frac * 14, fl.w + frac * 28, BH + frac * 28);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+newGame();
+requestAnimationFrame(loop);
+
+if ("serviceWorker" in navigator)
+  window.addEventListener("load", () => navigator.serviceWorker.register("../../sw.js"));
+</script>
+</body>
+</html>

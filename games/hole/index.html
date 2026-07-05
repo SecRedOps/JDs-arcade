@@ -106,7 +106,10 @@
 // ── CONFIG  (tune everything here) ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 const CFG = {
-  mapW: 2400, mapH: 2400,   // world size in pixels
+  mapW: 2400, mapH: 2400,    // CURRENT world size (grows during play — see expandMap)
+  baseMapW: 2400, baseMapH: 2400, // starting world size, restored on new game
+  expandTrigger: 10,         // expand when the biggest hole's r exceeds mapW / this
+  expandTarget: 14,          // grow the map so its side ≈ biggest r * this
   blockPitch: 240,           // road grid pitch (block + road)
   roadW: 28,                 // road stripe width
   roundTime: 120,            // seconds per round
@@ -150,13 +153,14 @@ const CFG = {
 
   // ── Camera zoom ────────────────────────────────────────────────────────────
   zoomRef: 28,             // player.r at which zoom = 1.0 (equals playerStartR)
-  minZoom: 0.2,            // most zoomed-out the camera goes
+  minZoom: 0.12,           // most zoomed-out the camera goes (deeper now the map expands)
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+const mod = (a, n) => ((a % n) + n) % n; // true modulo (handles negatives)
 function tryStore(k, v) { try { localStorage.setItem(k, String(v)); } catch(_) {} }
 function tryLoad(k) { try { return localStorage.getItem(k); } catch(_) { return null; } }
 
@@ -344,8 +348,9 @@ function placeObjects() {
   return list;
 }
 
-// Reappear an eaten object at a fresh valid spot (keeps the map populated all round)
-function relocateObj(o) {
+// Find a valid position for an object of radius r: off-road, clear of holes
+// and existing objects. Returns {x, y} or null after 30 tries.
+function findSpot(r) {
   const half = CFG.roadW / 2;
   for (let tries = 0; tries < 30; tries++) {
     const wx = Math.random() * CFG.mapW;
@@ -353,35 +358,100 @@ function relocateObj(o) {
 
     // Off-road only
     const bx = wx % CFG.blockPitch, by = wy % CFG.blockPitch;
-    if (bx < half + o.r + 4 || bx > CFG.blockPitch - half - o.r - 4) continue;
-    if (by < half + o.r + 4 || by > CFG.blockPitch - half - o.r - 4) continue;
+    if (bx < half + r + 4 || bx > CFG.blockPitch - half - r - 4) continue;
+    if (by < half + r + 4 || by > CFG.blockPitch - half - r - 4) continue;
 
     // Keep clear of every hole so it doesn't pop in on top of anyone
     let bad = false;
     for (let i = 0; i < holes.length; i++) {
       const h = holes[i];
       const dx = h.x - wx, dy = h.y - wy;
-      const cl = h.r + o.r + 120;
+      const cl = h.r + r + 120;
       if (dx*dx + dy*dy < cl*cl) { bad = true; break; }
     }
     if (bad) continue;
 
     // Keep clear of existing objects
-    const near = grid.query(wx, wy, o.r + CFG.maxObjR);
+    const near = grid.query(wx, wy, r + CFG.maxObjR);
     for (let i = 0; i < near.length; i++) {
       const n = near[i];
-      const dx = n.x - wx, dy = n.y - wy, min = n.r + o.r + 6;
+      const dx = n.x - wx, dy = n.y - wy, min = n.r + r + 6;
       if (dx*dx + dy*dy < min*min) { bad = true; break; }
     }
     if (bad) continue;
 
-    o.x = wx; o.y = wy; o.sx = wx; o.sy = wy;
-    o.eaten = false; o.swallowHole = null;
-    o.spawnAnim = 0;
-    grid.insert(o);
-    return true;
+    return { x: wx, y: wy };
   }
-  return false;
+  return null;
+}
+
+// Reappear an eaten object at a fresh valid spot (keeps the map populated all round)
+function relocateObj(o) {
+  const spot = findSpot(o.r);
+  if (!spot) return false;
+  o.x = spot.x; o.y = spot.y; o.sx = spot.x; o.sy = spot.y;
+  o.eaten = false; o.swallowHole = null;
+  o.spawnAnim = 0;
+  grid.insert(o);
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── MAP EXPANSION ─────────────────────────────────────────────────────────────
+// The city grows as the holes do. Without this, the biggest hole eventually gets
+// pinned by the map-edge clamp (its movement range shrinks toward zero) and the
+// leader simply parks and auto-wins.
+// ══════════════════════════════════════════════════════════════════════════════
+let blockShift = 0; // block-index offset so block colours stay stable across expansions
+
+function expandMap() {
+  let maxR = 0;
+  for (let i = 0; i < holes.length; i++) if (holes[i].r > maxR) maxR = holes[i].r;
+  if (maxR <= CFG.mapW / CFG.expandTrigger) return;
+
+  // Grow symmetrically, quantized to whole blocks per side so roads stay aligned
+  const p = CFG.blockPitch;
+  const perSide = Math.ceil((maxR * CFG.expandTarget - CFG.mapW) / 2 / p) * p;
+  if (perSide <= 0) return;
+
+  const oldArea = CFG.mapW * CFG.mapH;
+  CFG.mapW += perSide * 2;
+  CFG.mapH += perSide * 2;
+  blockShift += perSide / p;
+
+  // Shift the whole world by one side's growth so the expansion is centered
+  for (let i = 0; i < objs.length; i++) {
+    const o = objs[i];
+    o.x += perSide; o.y += perSide; o.sx += perSide; o.sy += perSide;
+  }
+  for (let i = 0; i < holes.length; i++) { holes[i].x += perSide; holes[i].y += perSide; }
+  for (let i = 0; i < POOL_SIZE; i++)  { particles[i].x += perSide; particles[i].y += perSide; }
+  for (let i = 0; i < POPUP_SIZE; i++) { popups[i].x += perSide; popups[i].y += perSide; }
+  cam.x += perSide; cam.y += perSide;
+
+  // Rebuild the spatial grid at the new size
+  grid = new SpatialGrid(CFG.mapW, CFG.mapH, 120);
+  for (let i = 0; i < objs.length; i++)
+    if (!objs[i].eaten) grid.insert(objs[i]);
+
+  // Populate the new land so object density stays roughly constant
+  const addedArea = CFG.mapW * CFG.mapH - oldArea;
+  const baseArea = CFG.baseMapW * CFG.baseMapH;
+  for (const type of CFG.objs) {
+    const extra = Math.round(type.count * addedArea / baseArea);
+    for (let k = 0; k < extra; k++) {
+      const spot = findSpot(type.r);
+      if (!spot) continue;
+      const o = makeObj(type, spot.x, spot.y);
+      o.spawnAnim = 0;
+      objs.push(o);
+      grid.insert(o);
+    }
+  }
+
+  banner.textContent = "🌆 The city grows!";
+  banner.style.opacity = "1";
+  bannerTimer = 2.2;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -692,7 +762,8 @@ function drawMap() {
 
   for (let bx = bxMin; bx <= bxMax; bx++) {
     for (let by = byMin; by <= byMax; by++) {
-      ctx.fillStyle = BLOCK_PAL[(bx * 7 + by * 13) % BLOCK_PAL.length];
+      // Hash on pre-expansion block indices so colours don't jump when the map grows
+      ctx.fillStyle = BLOCK_PAL[mod((bx - blockShift) * 7 + (by - blockShift) * 13, BLOCK_PAL.length)];
       ctx.fillRect(bx * p + half, by * p + half, inner, inner);  // world coords
     }
   }
@@ -1083,6 +1154,9 @@ function loop(ts) {
     if (bannerTimer <= 0) banner.style.opacity = "0";
   }
 
+  // ── Map expansion (keeps the biggest hole from being pinned by the edges) ──
+  expandMap();
+
   // ── Zoom (tracks player size; starts at 1.0 and immediately decreases on growth) ──
   {
     const tz = clamp(CFG.zoomRef / Math.max(player.r, CFG.zoomRef), CFG.minZoom, 1.0);
@@ -1148,6 +1222,7 @@ function newGame() {
   respawnNotice.style.display = "none";
   banner.style.opacity = "0";
   bannerTimer = 0; lastTier = 0; zoom = 1;
+  CFG.mapW = CFG.baseMapW; CFG.mapH = CFG.baseMapH; blockShift = 0;
 
   // Reset particle + popup pools
   for (let i = 0; i < POOL_SIZE; i++) particles[i].active = false;
