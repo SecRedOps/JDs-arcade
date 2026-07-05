@@ -23,6 +23,10 @@ const ASSETS = [
   "./games/lights-out/index.html",
   "./games/hole/",
   "./games/hole/index.html",
+  "./games/stack/",
+  "./games/stack/index.html",
+  "./games/snake/",
+  "./games/snake/index.html",
 ];
 
 self.addEventListener("install", e => {
