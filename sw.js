@@ -1,8 +1,8 @@
 // ╔══════════════════════════════════════════╗
 // ║  CACHE VERSION — bump this on any change ║
-// ║  Current: arcade-v6                      ║
+// ║  Current: arcade-v7                      ║
 // ╚══════════════════════════════════════════╝
-const CACHE = "arcade-v6";
+const CACHE = "arcade-v7";
 
 const ASSETS = [
   "./",
