@@ -2,7 +2,7 @@
 
 A multi-game offline arcade served from GitHub Pages. Zero dependencies, no build step — plain HTML/CSS/JS, installable as a PWA. Eight engaging puzzle and action games, fully playable offline after one visit.
 
-**Play:** https://secredops.github.io/tube-sort/
+**Play:** https://secredops.github.io/JDs-arcade/
 
 ## Games
 
